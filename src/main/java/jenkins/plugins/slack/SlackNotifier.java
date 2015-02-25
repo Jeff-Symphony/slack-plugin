@@ -1,13 +1,18 @@
 package jenkins.plugins.slack;
 
 import hudson.Extension;
+import hudson.FilePath;
 import hudson.Launcher;
+import hudson.Util;
 import hudson.model.BuildListener;
+import hudson.model.JobProperty;
 import hudson.model.JobPropertyDescriptor;
 import hudson.model.AbstractBuild;
 import hudson.model.AbstractProject;
 import hudson.model.Descriptor;
 import hudson.model.Job;
+import hudson.model.Run;
+import hudson.model.TaskListener;
 import hudson.tasks.BuildStepDescriptor;
 import hudson.tasks.BuildStepMonitor;
 import hudson.tasks.Notifier;
@@ -15,22 +20,31 @@ import hudson.tasks.Publisher;
 import hudson.util.FormValidation;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.logging.Level;
 import java.util.logging.Logger;
+import javax.annotation.Nonnull;
 import javax.servlet.ServletException;
+
+import jenkins.model.Jenkins;
+import jenkins.tasks.SimpleBuildStep;
 
 import net.sf.json.JSONObject;
 
 import org.kohsuke.stapler.DataBoundConstructor;
+import org.kohsuke.stapler.DataBoundSetter;
 import org.kohsuke.stapler.QueryParameter;
 import org.kohsuke.stapler.StaplerRequest;
 import org.kohsuke.stapler.export.Exported;
 
-public class SlackNotifier extends Notifier {
+public class SlackNotifier extends Notifier implements SimpleBuildStep {
 
     private static final Logger logger = Logger.getLogger(SlackNotifier.class.getName());
 
     private String teamDomain;
+    private String workflowMessage;
     private String authToken;
     private String buildServerUrl;
     private String room;
@@ -89,6 +103,21 @@ public class SlackNotifier extends Notifier {
 
         return new StandardSlackService(teamDomain, token, projectRoom);
     }
+
+    @Override
+	public void perform(@Nonnull Run<?, ?> run, @Nonnull FilePath workspace, @Nonnull Launcher launcher, @Nonnull TaskListener listener) throws InterruptedException, IOException {
+		try {
+			teamDomain = Util.fixEmpty(run.getParent().getProperty(SlackNotifier.SlackJobProperty.class).getTeamDomain());
+			authToken = Util.fixEmpty(run.getParent().getProperty(SlackNotifier.SlackJobProperty.class).getToken());
+			room = Util.fixEmpty(run.getParent().getProperty(SlackNotifier.SlackJobProperty.class).getRoom());
+			
+			SlackService workflowSlackService = new StandardSlackService(teamDomain, authToken, room);
+			String message = (workflowMessage != null) ? workflowMessage : "workflow message...";
+			workflowSlackService.publish(message, "green");
+		} catch (Exception e) {
+			logger.severe(e.toString());
+		}
+	}
 
     @Override
     public boolean perform(AbstractBuild<?, ?> build, Launcher launcher, BuildListener listener) throws InterruptedException, IOException {
